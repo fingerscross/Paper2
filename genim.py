@@ -54,6 +54,7 @@ def normalize_adj(mx):
     r_mat_inv_sqrt = sp.diags(r_inv_sqrt)
     return mx.dot(r_mat_inv_sqrt).transpose().dot(r_mat_inv_sqrt)
 
+# 采样 即选出一组种子集作为初始推理种子集，然后一步步优化
 def sampling(inverse_pairs):
     diffusion_count = []
     for i, pair in enumerate(inverse_pairs):
@@ -63,12 +64,14 @@ def sampling(inverse_pairs):
     return top_k
 
 # 1、加载图数据 不同扩散模型的扩散对和种子集（提前准备在data中）
+# seed_rate 种子集节点比例
 with open('data/' + args.dataset + '_mean_' + args.diffusion_model + str(10*args.seed_rate) + '.SG', 'rb') as f:
     graph = pickle.load(f)
-
+# adj邻接矩阵 inverse_pairs 三维张量
 adj, inverse_pairs = graph['adj'], graph['inverse_pairs']
 
 # 2、将有向权重图邻接矩阵归一化，增强数值稳定性
+# adj.T 转置矩阵
 adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
 adj = normalize_adj(adj + sp.eye(adj.shape[0]))
 adj = torch.Tensor(adj.toarray()).to_sparse()
@@ -127,7 +130,7 @@ def loss_all(x, x_hat, y, y_hat):
     # forward_loss = F.binary_cross_entropy(y_hat, y, reduction='sum')
     return reproduction_loss+forward_loss, reproduction_loss, forward_loss
 
-# 6、训练阶段
+# 6、训练阶段 (vae，即x->z z->x这个阶段的训练)
 for epoch in range(600):
     begin = time.time()
     total_overall = 0
@@ -143,17 +146,20 @@ for epoch in range(600):
 
         # data_pair 是一个三维张量，包含当前批次的扩散对
         # 数据被转换为浮点型并加载到 GPU 上
+        # x扩散前状态
         x = data_pair[:, :, 0].float().to(device)
+        # print(x)
+        # y扩散后状态
         y = data_pair[:, :, 1].float().to(device)
         # 清除上一轮的梯度，避免累积
         optimizer.zero_grad()
-        
+        # 获取numpy数组
         y_true = y.cpu().detach().numpy()
         x_true = x.cpu().detach().numpy()
         
         loss = 0
         for i, x_i in enumerate(x):
-
+            print(x_i)
             y_i = y[i]
             # x_hat 种子集vae重构结果   x_i batch维度
             x_hat = vae_model(x_i.unsqueeze(0))
@@ -227,6 +233,7 @@ adj = torch.Tensor(adj.toarray()).to_sparse().to(device)
 
 # 初始化潜在变量z  inverse_pairs 扩散对
 # 从扩散对中选出具有高扩散能力的种子节点集合topk_seed
+# 采样
 topk_seed = sampling(inverse_pairs)
 
 z_hat = 0
