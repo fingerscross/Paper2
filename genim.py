@@ -162,6 +162,7 @@ for epoch in range(600):
             print(x_i)
             y_i = y[i]
             # x_hat 种子集vae重构结果   x_i batch维度
+            # 将x_i -> z 然后z重构至x_hat
             x_hat = vae_model(x_i.unsqueeze(0))
             # y_hat gnn扩散结果预测值
             y_hat = forward_model(x_hat.squeeze(0).unsqueeze(-1), adj)
